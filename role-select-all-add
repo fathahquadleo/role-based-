@@ -1,0 +1,201 @@
+import React, { Fragment, useState, useEffect } from "react";
+import { Col, Card, CardHeader, CardBody, Form, FormGroup, Label, Row, Input } from 'reactstrap';
+import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
+import DataTable from 'react-data-table-component';
+import styled from "styled-components";
+import { getPermission, postPermission } from "../../../CommenUrl";
+import { NameError, SubmitForm, Addrole, Name } from '../../../Constant';
+import { Btn, H3, Breadcrumbs } from "../../../AbstractElements";
+import { getClientUrlDataToken, postClientUrlWithToken } from "../../../Utils/restUtils";
+import { useSelector } from "react-redux";
+import { toast } from "react-toastify";
+import Transparentspinner from "../../Common/Loader/Transparentspinner";
+
+const RoleForm = () => {
+    const { register, handleSubmit, formState: { errors } } = useForm();
+    const [accountList, setAccountList] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [resetPaginationToggle, setResetPaginationToggle] = useState(false);
+    const [selectedCheckboxes, setSelectedCheckboxes] = useState({});
+    const navigate = useNavigate();
+    const authState = useSelector((state) => state.auth);
+
+    const customStyles = {
+        headRow: {
+            style: {
+                display: "none", 
+            },
+        },
+        cells: {
+            style: {
+                borderLeft: '1px solid #ccc'         
+               },
+        },
+    };
+
+    const TableContainer = styled.div`
+        border: 1px solid #ccc;
+        padding: 0px;
+    `;
+
+    useEffect(() => {
+        roleData(); 
+    }, [selectedCheckboxes]);
+
+    const roleData = async () => {
+        let apiResponse = await getClientUrlDataToken(authState.apiUrl, getPermission);
+        if (apiResponse.status === true) {
+            setResetPaginationToggle(!resetPaginationToggle);
+            const tableData = Object.keys(apiResponse.data).map((key) => {
+                const module = { id: key, name: key, checkboxes: [] };
+                apiResponse.data[key].forEach((item) => {
+                    module.checkboxes.push({
+                        displayName: item.display_name,
+                        id: item.id,
+                        name: item.name
+                    });
+                });
+                return module;
+            });
+            setAccountList(tableData);
+        } else if (apiResponse.status >= 400 && apiResponse.status <= 405) {
+            navigate(`${process.env.PUBLIC_URL}/pages/error/error-page1`);
+        } else if (apiResponse.status >= 500 && apiResponse.status <= 505) {
+            navigate(`${process.env.PUBLIC_URL}/pages/error/error-page4`);
+        } else {
+            navigate(`${process.env.PUBLIC_URL}/pages/error/error-page3`);
+        }
+    };
+
+    const handleCheckboxChange = (id, index, isSelectAll) => {
+        setSelectedCheckboxes((prevCheckboxes) => {
+            const updatedCheckboxes = { ...prevCheckboxes };
+            if (isSelectAll) {
+                accountList.forEach(row => {
+                    if (row.id === id) {
+                        row.checkboxes.forEach(checkbox => {
+                            updatedCheckboxes[`${id}-${checkbox.id}`] = !prevCheckboxes[`${id}-selectAll`];
+                        });
+                        updatedCheckboxes[`${id}-selectAll`] = !prevCheckboxes[`${id}-selectAll`];
+                    }
+                });
+            } else {
+                const key = `${id}-${index}`;
+                updatedCheckboxes[key] = !prevCheckboxes[key];
+            }
+            return updatedCheckboxes;
+        });
+    };
+
+    const onSubmit = async (data) => {
+        setLoading(true);
+        const selectedCheckboxIds = Object.keys(selectedCheckboxes || {}) 
+            .filter((key) => selectedCheckboxes[key])
+            .map((key) => key.split('-')[1]);
+        const integerValues = selectedCheckboxIds.map(value => parseInt(value, 10));
+
+        const postRequest = { role: data.name, permissions: integerValues };
+        const addTaxResponse = await postClientUrlWithToken(authState.apiUrl, postPermission, postRequest);
+        if (addTaxResponse.status === 200) {
+            if (addTaxResponse.data.status === true) {
+                navigate(`${process.env.PUBLIC_URL}/menu/role`);
+            } else {
+                toast.error(addTaxResponse.data.message);
+                setLoading(false);
+            }
+        } else if (addTaxResponse.status >= 400 && addTaxResponse.status <= 405) {
+            navigate(`${process.env.PUBLIC_URL}/pages/error/error-page1`);
+        } else if (addTaxResponse.status >= 500 && addTaxResponse.status <= 505) {
+            navigate(`${process.env.PUBLIC_URL}/pages/error/error-page4`);
+        } else {
+            navigate(`${process.env.PUBLIC_URL}/pages/error/error-page3`);
+        }
+
+        setLoading(false);
+    };
+
+    return (
+        <Fragment>
+            {loading && (
+                <Transparentspinner />
+            )}
+
+            <Breadcrumbs mainTitle="Role" parent="Administration" title={Addrole} />
+            <Card>
+                <CardHeader className="pb-0">
+                    <H3>{Addrole}</H3>
+                </CardHeader>
+                <CardBody>
+                    <Form className="needs-validation" noValidate onSubmit={handleSubmit(onSubmit)}>
+                        <Row className="g-3">
+                            <Col md='6' className="ms-md-4">
+                                <Label className="form-label" for="name">{Name} <span className="requireStar">*</span></Label>
+                                <input className="form-control" id="name" type="text" {...register('name', { required: true })} />
+                                <span className="text-danger">{errors.name && NameError}</span>
+                            </Col>
+                        </Row>
+                        <CardBody>
+                            <div className="order-history table-responsive tableContainer">
+                                <Label className="form-label" >Permission</Label>
+                                <TableContainer>
+                                    <DataTable
+                                        progressPending={loading}
+                                        data={accountList}
+                                        columns={[
+                                            {
+                                                name: 'Module',
+                                                selector: (row) => row.name,
+                                                width: '18%',
+                                            },
+                                            {
+                                                name: 'Checkboxes',
+                                                width: '82%',
+                                                cell: (row) => {
+                                                    return (
+                                                        <div>
+                                                            <span style={{ flex: "none" }} className="form-check form-check-inline checkbox checkbox-dark mb-0">
+                                                                <Input
+                                                                    id={`checkbox-${row.id}-selectAll`}
+                                                                    type="checkbox"
+                                                                    checked={selectedCheckboxes[`${row.id}-selectAll`] || false}
+                                                                    onChange={() => handleCheckboxChange(row.id, null, true)}
+                                                                />
+                                                                <Label for={`checkbox-${row.id}-selectAll`}>Select All</Label>
+                                                            </span>
+                                                            {row.checkboxes.map((checkbox, index) => {
+                                                                return (
+                                                                    <span style={{ flex: "none" }} key={index} className="form-check form-check-inline checkbox checkbox-dark mb-0">
+                                                                        <Input
+                                                                            id={`checkbox-${row.id}-${index}`}
+                                                                            type="checkbox"
+                                                                            checked={selectedCheckboxes[`${row.id}-${checkbox.id}`] || false}
+                                                                            onChange={() => handleCheckboxChange(row.id, checkbox.id, false)}
+                                                                        />
+                                                                        <Label for={`checkbox-${row.id}-${index}`}>{checkbox.displayName}</Label>
+                                                                    </span>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    )
+                                                }
+                                            }
+                                        ]}
+                                        customStyles={customStyles}
+                                        dense
+                                        style={{ border: '1px solid' }}
+                                    />
+                                </TableContainer>
+                            </div>
+                        </CardBody>
+                        <FormGroup>
+                        </FormGroup>
+                        <Btn attrBtn={{ color: "primary" }} type="submit">{SubmitForm}</Btn>
+                    </Form>
+                </CardBody>
+            </Card>
+        </Fragment>
+    )
+}
+
+export default RoleForm;
